@@ -17,7 +17,7 @@
 (function () {
 	'use strict';
 
-	var VERSION = '3.10.2';
+	var VERSION = '3.10.4';
 	var CHIP_ID = 'dolbridge-chip';
 	var PANEL_ID = 'dolbridge-panel';
 	var POS_KEY = 'DoLBridge_panel_open';
@@ -474,20 +474,48 @@
 		});
 		return { ok: failed.length === 0, applied: applied, failed: failed, combat: combatGroups() };
 	}
+	/**
+	 * 我们派发合成事件时，游戏侧的 document 级 handler 可能因为事件缺少字段而抛错
+	 * （例如 DoL 的 numberify 模块读 ev.code.startsWith，而普通 Event 没有 code）。
+	 * 这里在派发期间压住这类异常：不让它冒到 SugarCube 弹报错框，同时把消息记下来回传。
+	 */
+	function withErrorGuard(fn) {
+		var swallowed = [];
+		var guard = function (e) {
+			try { swallowed.push(String((e && e.message) || e)); } catch (x) { }
+			try { if (e && e.preventDefault) e.preventDefault(); } catch (x) { }
+			try { if (e && e.stopImmediatePropagation) e.stopImmediatePropagation(); } catch (x) { }
+			try { if (e) e.returnValue = true; } catch (x) { }
+		};
+		window.addEventListener('error', guard, true);
+		try { fn(); } catch (e) { swallowed.push(String((e && e.message) || e)); }
+		finally { try { window.removeEventListener('error', guard, true); } catch (x) { } }
+		return swallowed;
+	}
+
 	function setForm(i, value) {
 		var els = formEls();
 		var el = els[Number(i)];
 		if (!el) return { ok: false, error: 'form not found', index: i, count: els.length };
 		var fire = function (type) {
-			try { el.dispatchEvent(new Event(type, { bubbles: true })); } catch (e) { /* ignore */ }
+			try {
+				if (/^key/.test(type)) {
+					// 键盘事件必须带 code/key：游戏里有 handler 直接读 ev.code，普通 Event 会让它抛错
+					el.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key: 'Unidentified', code: 'Unidentified' }));
+				} else {
+					el.dispatchEvent(new Event(type, { bubbles: true }));
+				}
+			} catch (e) { /* ignore */ }
 		};
+		var fail = null;
+		var swallowed = withErrorGuard(function () {
 		try {
 			if (el.tagName === 'SELECT') {
 				var opts = Array.prototype.slice.call(el.options);
 				var hit = opts.filter(function (o) { return String(o.value) === String(value); })[0]
 					|| opts.filter(function (o) { return clean(o.textContent) === String(value); })[0]
 					|| opts.filter(function (o) { return clean(o.textContent).indexOf(String(value)) >= 0; })[0];
-				if (!hit) return { ok: false, error: '下拉里没有这个选项', options: opts.map(function (o) { return clean(o.textContent); }).slice(0, 40) };
+				if (!hit) { fail = { ok: false, error: '下拉里没有这个选项', options: opts.map(function (o) { return clean(o.textContent); }).slice(0, 40) }; return; }
 				el.value = hit.value; fire('input'); fire('change');
 			} else if (el.type === 'radio') {
 				// 单选框：value 传 true 表示"选中这一项"；传字符串则找同组里值匹配的那个
@@ -499,19 +527,21 @@
 					var target = group.filter(function (x) { return textOf(x) === want; })[0]
 						|| group.filter(function (x) { return textOf(x).indexOf(want) >= 0; })[0]
 						|| group.filter(function (x) { return String(x.value) === want; })[0];
-					if (!target) return { ok: false, error: '同组里没有匹配的单选框', group: group.map(textOf) };
+					if (!target) { fail = { ok: false, error: '同组里没有匹配的单选框', group: group.map(textOf) }; return; }
 					target.click();
 				} else if (!!value !== el.checked) el.click();
 			} else if (el.type === 'checkbox') {
 				if (!!value !== el.checked) el.click();
 			} else {
 				el.value = value; fire('input'); fire('change');
-				if (el.type === 'range' || el.type === 'number') { fire('keyup'); }
 			}
 		} catch (e) {
-			return { ok: false, error: String(e && e.message || e) };
+			fail = { ok: false, error: String(e && e.message || e) };
 		}
+		});
+		if (fail) { if (swallowed.length) fail.swallowedErrors = swallowed.slice(0, 3); return fail; }
 		var res = { ok: true, set: { index: Number(i), kind: formKind(el), value: value } };
+		if (swallowed.length) res.swallowedErrors = swallowed.slice(0, 3);
 		emit('setForm', res);
 		return res;
 	}

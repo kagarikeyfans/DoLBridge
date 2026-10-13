@@ -27,3 +27,9 @@
 - 页面内 AI Agent（装一个 zip 就能用）：独立问答、计划停止、阶段汇报、日记与记忆
 - 外部 Node 驱动：CORS 兜底、心跳、断线重连、上下文压缩、状态落盘
 - 穿着 / 侧边栏提示 / 衣柜分部位 / 商店搜索与筛选全部暴露给 AI
+
+## v3.10.3 / v3.10.4
+- 修复 setForm 派发合成 keyup 导致的游戏报错框（Cannot read properties of undefined reading 'startsWith'）
+- 键盘事件改用 KeyboardEvent；去掉 range/number 上多余的 keyup
+- 新增合成事件期间的错误兜底（swallowedErrors 回传），游戏侧 handler 抛错不再弹框
+- 修复 setForm 失败分支被当成成功返回的问题
