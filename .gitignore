@@ -1,0 +1,6 @@
+﻿node_modules/
+*.log
+agent-out/
+ui-shots/
+.zen-session
+*.tmp
