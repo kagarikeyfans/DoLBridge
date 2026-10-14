@@ -33,3 +33,9 @@
 - 键盘事件改用 KeyboardEvent；去掉 range/number 上多余的 keyup
 - 新增合成事件期间的错误兜底（swallowedErrors 回传），游戏侧 handler 抛错不再弹框
 - 修复 setForm 失败分支被当成成功返回的问题
+
+## v3.10.5
+- 重写「启动调试浏览器.bat」：解决放到游戏目录双击报错的问题
+  - 原因：旧脚本里的中文是坏编码（UTF-8 的 bat 会被 cmd 读坏，中文行甚至被当成命令执行）
+  - 现在：GBK 编码 + chcp 936 + 自动找游戏 html、自动找 Chrome/Edge、端口占用检测
+  - 启动改用 PowerShell Start-Process（实测端口 9262 成功拉起 Chrome）
