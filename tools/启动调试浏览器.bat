@@ -3,11 +3,14 @@ chcp 936 >nul
 setlocal
 title DoLBridge 调试浏览器启动器
 
-rem 用法：把本脚本放到游戏目录里双击即可；也可以拖一个 html 到本脚本上。
-rem 想换端口：命令行 启动调试浏览器.bat "" 9222
+rem 用法：把本脚本放到游戏目录里双击；也可以拖一个 html 到本脚本上。
+rem 换端口：启动调试浏览器.bat "" 9333
 
 set PORT=%~2
 if "%PORT%"=="" set PORT=9222
+
+set LOG=%TEMP%\dolbridge-launch.log
+echo [%date% %time%] ---- 启动器开始 ---- >> "%LOG%"
 
 rem ---------- 1. 找游戏本体 ----------
 set GAME=%~1
@@ -17,7 +20,7 @@ if not defined GAME if exist "%~dp0..\Degrees of Lewdity.html" set "GAME=%~dp0..
 if not defined GAME for %%F in ("%~dp0..\*Lewdity*.html") do if not defined GAME set "GAME=%%~fF"
 if not defined GAME goto :nogame
 
-rem ---------- 2. 找浏览器：Chrome 优先，其次 Edge ----------
+rem ---------- 2. 找浏览器 ----------
 set BROWSER=
 if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
 if not defined BROWSER if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
@@ -28,23 +31,26 @@ if not defined BROWSER goto :nobrowser
 
 set PROFILE=%TEMP%\dol-debug-%PORT%
 
-rem ---------- 3. 端口是否已被占用 ----------
+rem ---------- 3. 端口检查 ----------
 netstat -ano | findstr /r /c:":%PORT% .*LISTENING" >nul 2>nul
 if not errorlevel 1 goto :already
 
-rem ---------- 4. 启动 ----------
 echo.
-echo   游戏：%GAME%
-echo   端口：%PORT%
+echo   游戏  ：%GAME%
+echo   端口  ：%PORT%
 echo   浏览器：%BROWSER%
 echo.
-echo   正在用一个独立配置目录启动调试浏览器，不影响你平时用的浏览器窗口。
+echo   将用一个独立配置目录启动，不影响你平时用的浏览器窗口。
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%BROWSER%' -ArgumentList '--remote-debugging-port=%PORT%','--user-data-dir=%PROFILE%','--no-first-run','--no-default-browser-check','%GAME%'"
-if errorlevel 1 goto :failed
+echo [%date% %time%] 启动 端口=%PORT% >> "%LOG%"
+echo [%date% %time%] 游戏=%GAME% >> "%LOG%"
+echo [%date% %time%] 浏览器=%BROWSER% >> "%LOG%"
 
-echo   已发出启动命令，稍等几秒浏览器窗口就会出现。
-echo   接下来：在游戏里装好 DoLBridge.mod.zip 并刷新页面，再点浮窗里的开始。
+start "" "%BROWSER%" --remote-debugging-port=%PORT% --user-data-dir="%PROFILE%" --no-first-run --no-default-browser-check "%GAME%"
+echo [%date% %time%] start 返回码=%ERRORLEVEL% >> "%LOG%"
+
+echo   已发出启动命令，几秒后会出现浏览器窗口。
+echo   接着在游戏里装好 DoLBridge.mod.zip 并刷新页面。
 echo.
 pause
 exit /b 0
@@ -52,7 +58,8 @@ exit /b 0
 :nogame
 echo.
 echo   没有找到游戏本体 html。
-echo   请把本脚本放到游戏目录里再双击，或者把 Degrees of Lewdity.html 拖到本脚本上。
+echo   请把本脚本放到游戏目录里再双击，或把 Degrees of Lewdity.html 拖到本脚本上。
+echo [%date% %time%] 找不到游戏 html >> "%LOG%"
 echo.
 pause
 exit /b 1
@@ -60,6 +67,7 @@ exit /b 1
 :nobrowser
 echo.
 echo   没有找到 Chrome 或 Edge，请先安装其中一个。
+echo [%date% %time%] 找不到浏览器 >> "%LOG%"
 echo.
 pause
 exit /b 1
@@ -68,14 +76,7 @@ exit /b 1
 echo.
 echo   端口 %PORT% 已经在监听，说明上一次的调试浏览器还开着。
 echo   直接用那个窗口就行；要重新启动，请先把它完全关掉。
+echo [%date% %time%] 端口 %PORT% 已被占用 >> "%LOG%"
 echo.
 pause
 exit /b 0
-
-:failed
-echo.
-echo   启动失败。可以手动在命令行里执行：
-echo   "%BROWSER%" --remote-debugging-port=%PORT% --user-data-dir="%PROFILE%" "%GAME%"
-echo.
-pause
-exit /b 1

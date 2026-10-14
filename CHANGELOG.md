@@ -39,3 +39,8 @@
   - 原因：旧脚本里的中文是坏编码（UTF-8 的 bat 会被 cmd 读坏，中文行甚至被当成命令执行）
   - 现在：GBK 编码 + chcp 936 + 自动找游戏 html、自动找 Chrome/Edge、端口占用检测
   - 启动改用 PowerShell Start-Process（实测端口 9262 成功拉起 Chrome）
+
+## v3.10.6
+- 启动器最终定稿：改用标准 start 写法 + 路径显式引号（修复被空格切成多个参数、打开 3 个标签页的问题）
+- 增加自诊断日志 %TEMP%\dolbridge-launch.log（记录识别到的游戏/浏览器/端口）
+- 实测：9269 端口拉起 Chrome，只开 1 个标签，正确打开游戏 html
