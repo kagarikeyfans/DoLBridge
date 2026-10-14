@@ -29,25 +29,29 @@ if not defined BROWSER if exist "%ProgramFiles%\Microsoft\Edge\Application\msedg
 if not defined BROWSER if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
 if not defined BROWSER goto :nobrowser
 
+rem ---------- 3. 配置目录：默认端口沿用原来的 dol-debug（存档在里面）----------
 set PROFILE=%TEMP%\dol-debug-%PORT%
+if "%PORT%"=="9222" set "PROFILE=%TEMP%\dol-debug"
 
-rem ---------- 3. 端口检查 ----------
+rem ---------- 4. 端口检查 ----------
 netstat -ano | findstr /r /c:":%PORT% .*LISTENING" >nul 2>nul
 if not errorlevel 1 goto :already
 
 echo.
-echo   游戏  ：%GAME%
-echo   端口  ：%PORT%
-echo   浏览器：%BROWSER%
+echo   游戏    ：%GAME%
+echo   端口    ：%PORT%
+echo   浏览器  ：%BROWSER%
+echo   配置目录：%PROFILE%
 echo.
-echo   将用一个独立配置目录启动，不影响你平时用的浏览器窗口。
+echo   提示：浏览器存档 / mod 设置 / API Key 都跟着配置目录走，
+echo         想接着玩原来的进度，就用默认端口 9222 启动。
 echo.
 echo [%date% %time%] 启动 端口=%PORT% >> "%LOG%"
 echo [%date% %time%] 游戏=%GAME% >> "%LOG%"
 echo [%date% %time%] 浏览器=%BROWSER% >> "%LOG%"
+echo [%date% %time%] 配置目录=%PROFILE% >> "%LOG%"
 
 start "" "%BROWSER%" --remote-debugging-port=%PORT% --user-data-dir="%PROFILE%" --no-first-run --no-default-browser-check "%GAME%"
-echo [%date% %time%] start 返回码=%ERRORLEVEL% >> "%LOG%"
 
 echo   已发出启动命令，几秒后会出现浏览器窗口。
 echo   接着在游戏里装好 DoLBridge.mod.zip 并刷新页面。
