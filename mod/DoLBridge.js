@@ -17,7 +17,7 @@
 (function () {
 	'use strict';
 
-	var VERSION = '3.10.4';
+	var VERSION = '3.11.1';
 	var CHIP_ID = 'dolbridge-chip';
 	var PANEL_ID = 'dolbridge-panel';
 	var POS_KEY = 'DoLBridge_panel_open';
@@ -209,11 +209,46 @@
 		return t;
 	}
 
+	/* DoL 用 class 给正文上色，颜色本身带语义（红=危险/负面、金=钱或重要、粉=淫秽…）。
+	   AI 只能看到纯文本，所以这里把颜色标注成【红】…【/红】。 */
+	var COLOR_CN = { red: '红', gold: '金', yellow: '黄', pink: '粉', purple: '紫', magenta: '洋红', blue: '蓝', teal: '青', cyan: '青', green: '绿', lime: '亮绿', grey: '灰', gray: '灰', orange: '橙', white: '白', brown: '棕' };
+	function colorNameOf(el) {
+		var cls = String((el && el.className) || '').split(/\s+/);
+		for (var i = 0; i < cls.length; i++) if (COLOR_CN[cls[i]]) return COLOR_CN[cls[i]];
+		return null;
+	}
+	/** 取带颜色标注的文本；返回 { text, highlights, marks } */
+	function coloredText(root, maxMarks) {
+		var cap = maxMarks || 24, marks = 0, highlights = [];
+		if (!root) return { text: '', highlights: highlights, marks: 0 };
+		var out;
+		try {
+			var clone = root.cloneNode(true);
+			var list = Array.prototype.slice.call(clone.querySelectorAll('*'));
+			for (var i = 0; i < list.length; i++) {
+				if (marks >= cap) break;
+				var el = list[i];
+				var name = colorNameOf(el);
+				if (!name) continue;
+				if (/^(SCRIPT|STYLE|BUTTON)$/.test(el.tagName)) continue;
+				var t = clean(el.textContent || '');
+				if (!t) continue;
+				marks++;
+				highlights.push({ color: name, text: t.slice(0, 80) });
+				el.textContent = '【' + name + '】' + t + '【/' + name + '】';
+			}
+			out = clean(clone.innerText || clone.textContent || '');
+		} catch (e) {
+			out = clean((root.innerText || root.textContent) || '');
+		}
+		return { text: out, highlights: highlights, marks: marks };
+	}
+
 	function describeAction(el, i) {
 		return {
 			i: i,
 			tag: el.tagName.toLowerCase(),
-			text: actionText(el),
+			text: coloredText(el, 6).text || actionText(el),
 			kind: el.tagName.toLowerCase() === 'button' ? 'button' : 'link',
 			nav: el.getAttribute('data-passage') || null,
 			disabled: isDisabled(el),
@@ -347,7 +382,8 @@
 			forms.push(item);
 		}
 		var root = passageEl();
-		var text = clean(root.innerText || '');
+		var colored = coloredText(root, 24);
+		var text = colored.text;
 		var truncated = false;
 		if (text.length > maxChars) {
 			truncated = true;
@@ -363,6 +399,7 @@
 
 			passage: {
 				title: m.passage,
+				highlights: colored.highlights,
 				tags: safe(function () { return (storyInfo(m.passage) || {}).tags || null; }, null),
 				text: text,
 				textLength: clean(root.innerText || '').length,
@@ -860,6 +897,9 @@
 		'纵向连通（同列上下可走）：倒钩街 ↕ 住宅区小巷 ↕ 多瑙河街；峭壁街 ↕ 康努达塔斯街 ↕ 狼街；海星街 ↕ 商业街小巷 ↕ 南丁格尔街；梅尔街 ↕ 工业区小巷 ↕ 鹰街',
 		'斜向 / 小巷捷径：倒钩街↘康努达塔斯街、峭壁街↙康努达塔斯街、康努达塔斯街↘狼街；峭壁街↘商业街小巷、海星街↙商业街小巷、商业街小巷↘南丁格尔街；海星街↘公园、梅尔街↘公园、梅尔街↙牛津街、牛津街↘南丁格尔街、牛津街↘鹰街',
 		'下水道（排水系统）：住宅区排水系统（多瑙河街一带下方）→ 商业区排水系统（南丁格尔街一带下方）→ 工业区排水系统（鹰街一带下方）→ 排海出口；三个排水系统在地下互通，从对应街区可以下去。',
+		'',
+		'# 怎么读正文',
+		'游戏正文与动作里会用【红】…【/红】这类标记表示**高亮文字**：红=值得注意（危险、负面或强调），金/黄=钱或重要，粉=淫秽内容，蓝=链接，灰=次要信息。哪个字被标了色是有讲究的，别忽略。',
 		'',
 		'# 常用操作怎么做',
 		'- **换衣服/戴饰品**：打开家里的衣柜 → 点部位标签（Head头饰 / Face面饰 / Neck颈部 / Upper上装 / Lower下装 / Under Upper内衣上 / Under Lower内衣下 / Hands手 / Handheld手持 / Legs腿部 / Feet鞋）→ 需要时先选模式 Wear(穿)/Discard(丢弃) → 点具体物品名。结果会显示在【当前穿戴（分部位）】里。',
