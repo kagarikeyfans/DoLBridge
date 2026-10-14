@@ -17,7 +17,7 @@
 (function () {
 	'use strict';
 
-	var VERSION = '3.12.3';
+	var VERSION = '3.13.0';
 	var CHIP_ID = 'dolbridge-chip';
 	var PANEL_ID = 'dolbridge-panel';
 	var POS_KEY = 'DoLBridge_panel_open';
@@ -2888,7 +2888,10 @@
 
 			// 画面只有 1 个可选动作（多半是「继续」）→ 自动推进，把文本合并成一条再交给模型
 			var autoN = 0, autoMerge = '';
-			while (acts.length === 1 && autoN < 40 && EMB.active && !planStopDue(plan(), ctx.sidebar)) {
+			// 护栏：有战斗/遭遇部位选项、或唯一动作不是「推进类」文案时，必须交给模型；单次最多 12 步
+			var EMB_ADVANCE = /继续|等待|忍受|忍耐|睡|醒来|下一|Next|Continue|跳过|结束|完成/i;
+			var embCanAuto = function (list) { return list.length === 1 && !(ctx.combat && ctx.combat.length) && EMB_ADVANCE.test(String(list[0].text || '')); };
+			while (embCanAuto(acts) && autoN < 12 && EMB.active && !planStopDue(plan(), ctx.sidebar)) {
 				var a1 = acts[0];
 				var rr = null;
 				try { rr = await step(a1.i, { timeoutMs: 20000 }); } catch (e) { rr = null; }
@@ -2902,7 +2905,7 @@
 				var lastC = chatNow[chatNow.length - 1];
 				if (lastC && lastC.role === 'user' && Number(lastC.at || 0) > Number(EMB.lastChatAt || 0)) break;
 			}
-			if (autoN) autoMerge = '【自动推进 ' + autoN + ' 步：画面只有 1 个可选动作（被束缚/意识不清等情况下只能「继续」），已自动点过，不是卡死】' + autoMerge;
+			if (autoN) autoMerge = '【自动推进 ' + autoN + ' 步：画面只有 1 个「继续/等待」类动作，已自动点过（不含战斗选择页，那种页面会停下来问你）】' + autoMerge;
 			if (EMB.steps >= (embCfg().maxSteps || 500)) return embFail('已达到本次运行的步数上限 ' + embCfg().maxSteps + '（再点「开始」可继续，记忆保留）');
 
 			// 开局 / 每天零点：存档 + 看属性·社交·日志 + 定当天目标
