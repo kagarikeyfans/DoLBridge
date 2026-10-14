@@ -17,7 +17,7 @@
 (function () {
 	'use strict';
 
-	var VERSION = '3.11.1';
+	var VERSION = '3.12.3';
 	var CHIP_ID = 'dolbridge-chip';
 	var PANEL_ID = 'dolbridge-panel';
 	var POS_KEY = 'DoLBridge_panel_open';
@@ -1181,6 +1181,27 @@
 	function plan() { loadUiState(); return uiState.plan; }
 
 	/* ------------------------- 笔记（每个会话独立；用户可看可改，AI 可追加） */
+	/** 游戏内日期（用游戏的 Time 对象；拿不到就返回 null） */
+	function gameDate() {
+		return safe(function () {
+			var T = (typeof Time !== 'undefined' && Time) ? Time : (window.Time || null);
+			if (!T || !T.date) return null;
+			var d = T.date;
+			var pad = function (n) { return (Number(n) < 10 ? '0' : '') + Number(n); };
+			var wd = '';
+			try { wd = String(T.weekDayName || (timeNs() || {}).weekDayName || ''); } catch (e) { wd = ''; }
+			if (!wd) { var wdList = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']; wd = wdList[Number(T.weekDay) % 7] || ''; }
+			var key = Number(d.year) + '-' + pad(d.month) + '-' + pad(d.day);
+			return { key: key, text: key + ' ' + wd, weekDay: T.weekDay };
+		}, null);
+	}
+	/** 日记里最后一条的日期（第一行写的那个日期） */
+	function lastDiaryDay() {
+		var t = notesText(), re = /-\s*(\d{4}-\d{2}-\d{2})/g, hit = null, mm;
+		while ((mm = re.exec(t))) hit = mm[1];
+		return hit;
+	}
+
 	function notesText() { loadUiState(); return uiState.notes || ''; }
 	function setNotes(t) {
 		loadUiState();
@@ -1192,6 +1213,11 @@
 		var add = String(t == null ? '' : t).trim();
 		if (!add) return { ok: false, error: '空内容' };
 		loadUiState();
+		// 一天只写一篇：同一天已经写过就拒绝（避免一天塞好几篇）
+		var today = gameDate();
+		if (today && lastDiaryDay() === today.key) {
+			return { ok: false, error: '今天（' + today.text + '）已经写过日记了：一天只写一篇，请在明天结束时再写', alreadyWroteToday: true, day: today.key };
+		}
 		var cur = uiState.notes || '';
 		uiState.notes = (cur ? cur.replace(/\s+$/, '') + '\n' : '') + '- ' + add.slice(0, 600);
 		saveUi(); renderNotes(); emit('notes', { notes: uiState.notes, appended: add, session: curSlot() });
@@ -1500,16 +1526,16 @@
 	}
 	function savePlanFromInput() {
 		loadUiState();
+		uiState.dirty = uiState.dirty || {}; uiState.dirty.plan = false;   // 先清标记，否则 renderPlan/renderNotes 会提前 return，字数不刷新
 		var r = setPlan(nodes.planInput ? nodes.planInput.value : '');
-		uiState.dirty = uiState.dirty || {}; uiState.dirty.plan = false;
 		renderSaveBtns();
 		writeSystemNote('计划已保存（当前会话）');
 		return r;
 	}
 	function saveDiaryFromInput() {
 		loadUiState();
+		uiState.dirty = uiState.dirty || {}; uiState.dirty.diary = false;   // 先清标记，否则字数不刷新
 		var r = setNotes(nodes.notesInput ? nodes.notesInput.value : '');
-		uiState.dirty = uiState.dirty || {}; uiState.dirty.diary = false;
 		renderSaveBtns();
 		writeSystemNote('日记已保存（当前会话）');
 		return r;
@@ -1527,7 +1553,7 @@
 	}
 
 	function renderNotes() {
-		if (uiState.dirty && uiState.dirty.diary) { renderSaveBtns(); return; }   // 有未保存修改：别覆盖
+		if (uiState.dirty && uiState.dirty.diary && document.activeElement === nodes.notesInput) { renderSaveBtns(); return; }   // 正在编辑且有未保存修改：别覆盖输入框
 		if (nodes.notesInput && document.activeElement !== nodes.notesInput) nodes.notesInput.value = uiState.notes || '';
 		if (nodes.notesState) nodes.notesState.textContent = (uiState.notes || '').trim() ? ('\u5DF2\u4FDD\u5B58 ' + uiState.notes.length + ' \u5B57') : '\uFF08\u7A7A\uFF09';
 		if (nodes.planState) nodes.planState.textContent = (uiState.plan || '').trim() ? ('\u5DF2\u4FDD\u5B58 ' + uiState.plan.length + ' \u5B57') : '\uFF08\u7A7A\uFF09';
@@ -2204,12 +2230,15 @@
 
 	/** 侧边栏 + 关键状态：固定小对象（约 400 字节），可以每回合都发给模型 */
 	function sidebar() {
+		var _gd = gameDate();
 		var _ni = noticeInfo();
 		var V = vars(), T = timeNs(), W = null;
 		try { W = window.Weather || null; } catch (e) { W = null; }
 		var d = safe(function () { return T.date; }, null) || {};
 		var out = {
 			date: (toNum(d.year) == null ? '?' : toNum(d.year)) + '-' + pad2(d.month) + '-' + pad2(d.day),
+			diaryDay: lastDiaryDay(),                                 // 日记里最后一条的日期
+			diaryToday: !!(_gd && lastDiaryDay() === _gd.key),        // 今天的日记是否已经写过（一天只写一篇）
 			time: pad2(d.hour) + ':' + pad2(d.minute),
 			weekday: toStr(safe(function () { return T.weekDayName; }, null)),
 			season: toStr(safe(function () { return T.season; }, null)),
@@ -2640,8 +2669,11 @@
 		if (lastResult) L.push('【上一步结果】' + lastResult);
 		if (userMsgs && userMsgs.length) L.push('【用户新指令（重要，优先执行）】' + userMsgs.join(' / '));
 		if (ctx.plan) L.push('【用户计划（必须遵守；计划里的时间/条件一旦达到就要停下并汇报）】' + ctx.plan);
-		if (ctx.notes && String(ctx.notes).trim()) L.push('【我的日记（你自己以前写下的，可继续用 diary_add 追加一条）】\n' + String(ctx.notes).slice(0, 1500));
-		else L.push('【我的日记】（还是空的；有值得记下的经验/教训就用 diary_add 追加一条）');
+		var _sb = ctx.sidebar || {};
+		var _dayTip = _sb.date ? ('今天是 ' + _sb.date + '。') : '';
+		_dayTip += _sb.diaryToday ? '今天的日记已经写过了（一天只写一篇，明天再写）。' : '今天的日记还没写：**请在今天结束时**（活动做完、准备睡觉前）用 diary_add 写一篇。';
+		if (ctx.notes && String(ctx.notes).trim()) L.push('【我的日记（一天只写一篇）】' + _dayTip + '\n' + String(ctx.notes).slice(0, 1500));
+		else L.push('【我的日记】（还是空的）' + _dayTip);
 		if (ctx.look) L.push('【当前穿着与携带】' + ctx.look);
 		if (ctx.notice && (ctx.notice.notice || ctx.notice.tips)) L.push('【侧边栏提示】' + [ctx.notice.notice, ctx.notice.tips ? '小贴士：' + ctx.notice.tips : ''].filter(Boolean).join(' ｜ '));
 		if (ctx.worn) L.push('【当前穿戴（分部位）】' + Object.keys(ctx.worn).map(function (k) { return k + '：' + (ctx.worn[k] || '无'); }).join('，'));
@@ -2665,7 +2697,7 @@
 			+ '{"report": "汇报正文（≤400字：做了什么、花了多少钱、拿到什么、身体与精神状态、下一步打算）"}');
 		L.push('要填写输入框/下拉框时，加 "form": {"<控件编号>": "<值>"}（例：商店搜索框 {"form":{"0":"pyjama"}}）。');
 		L.push('有值得长期记住的心得时，加 "diary_add": "日记正文"，会追加进【我的日记】。');
-		L.push('写日记的格式：**第一行只写游戏内日期**（形如 2022-09-06 星期六），第二行起写正文（1~3 句：发生了什么、学到什么、下次注意什么）；不要写标题。');
+		L.push('写日记的规则：**一天只写一篇，而且只在当天结束时写**（活动做完、准备睡觉前）；格式是**第一行只写游戏内日期**（形如 2022-09-06 星期六），第二行起写正文（1~3 句：发生了什么、学到什么、下次注意什么）；不要写标题。当天已经写过就不要再写。');
 		L.push('如果画面上只有「继续」这类推进选项（被束缚、意识不清、无法反抗时会出现），直接选它推进即可——这是正常的，不是卡死；场景名可能不变，但文字/时间在动就是在推进。');
 		L.push('只输出 JSON：{"action_index": <编号>'
 			+ (cmb ? ', "combat": {"<部位名>": <选项编号>}' : '')
